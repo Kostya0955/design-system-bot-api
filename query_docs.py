@@ -1,3 +1,18 @@
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
+from pinecone import Pinecone
+
+load_dotenv()
+
+# OpenAI client
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+# Pinecone client + index
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+index = pc.Index(os.environ["PINECONE_INDEX_NAME"])
+
+
 def get_context(question: str, top_k: int = 3):
     # считаем эмбеддинг вопроса
     emb = client.embeddings.create(
