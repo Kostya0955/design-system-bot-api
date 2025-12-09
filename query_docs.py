@@ -1,22 +1,4 @@
-import os
-from dotenv import load_dotenv
-from pinecone import Pinecone
-from openai import OpenAI
-
-# 1. Загружаем ключи из .env
-load_dotenv()
-PINECONE_API_KEY = os.environ["PINECONE_API_KEY"]
-PINECONE_INDEX_NAME = os.environ["PINECONE_INDEX_NAME"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-
-# 2. Инициализируем Pinecone и OpenAI
-pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(PINECONE_INDEX_NAME)
-
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# 3. Получаем контекст из Pinecone по вопросу
-def get_context(question: str, top_k: int = 3) -> str:
+def get_context(question: str, top_k: int = 3):
     # считаем эмбеддинг вопроса
     emb = client.embeddings.create(
         model="text-embedding-3-small",
@@ -32,17 +14,26 @@ def get_context(question: str, top_k: int = 3) -> str:
     )
 
     chunks = []
+    components = []
+
     for match in res["matches"]:
         metadata = match.get("metadata") or {}
         text = metadata.get("text", "")
+        component = metadata.get("component")
+
         if text:
             chunks.append(text)
+        if component:
+            components.append(component)
 
-    return "\n\n---\n\n".join(chunks)
+    context_text = "\n\n---\n\n".join(chunks)
+    main_component = components[0] if components else None
 
-# 4. Формируем ответ GPT на основе контекста
+    return context_text, main_component
+
+
 def answer_question(question: str) -> str:
-    context = get_context(question)
+    context, main_component = get_context(question)
 
     system_prompt = (
         "Ты ассистент по документации дизайн-системы. "
@@ -57,7 +48,7 @@ def answer_question(question: str) -> str:
     )
 
     resp = client.chat.completions.create(
-        model="gpt-4o-mini",  # если будет ошибка про модель, можно поменять на 'gpt-4o'
+        model="gpt-4o-mini",
         temperature=0,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -65,11 +56,10 @@ def answer_question(question: str) -> str:
         ],
     )
 
-    return resp.choices[0].message.content.strip()
+    answer_text = resp.choices[0].message.content.strip()
 
-# 5. Простой тест при запуске файла напрямую
-if __name__ == "__main__":
-    question = "Какой отступ между лоудером и текстом?"
-    print("Вопрос:", question)
-    answer = answer_question(question)
-    print("\nОтвет:\n", answer)
+    # добавляем название компонента в начало ответа
+    if main_component:
+        return f"{main_component}\n\n{answer_text}"
+    else:
+        return answer_text
